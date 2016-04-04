@@ -58,8 +58,12 @@ docs/_build/
 # PyBuilder
 target/
 
-#Ipython Notebook
+# Ipython Notebook
 .ipynb_checkpoints
 
-#JetBrains PyCharm project
+# JetBrains PyCharm project
 .idea/
+
+# sdist
+AUTHORS
+ChangeLog
