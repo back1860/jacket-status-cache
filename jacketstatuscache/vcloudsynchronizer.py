@@ -1,7 +1,7 @@
 # -*- coding:utf-8 -*-
 
-from pyvcloud.vcloudair import *
-from pyvcloud.vcloudsession import *
+from pyvcloud.schema.vcd.v1_5.schemas.vcloud import sessionType, queryRecordViewType
+import requests
 from urllib import *
 import power_state
 import base64
@@ -9,8 +9,8 @@ import log as logger
 
 status_dict_vapp_to_instance = {
     "FAILED_CREATION": power_state.CRASHED,
-    "UNRESOLVED": power_state.BUILDING,
-    "RESOLVED": power_state.BUILDING,
+    "UNRESOLVED": power_state.NOSTATE,
+    "RESOLVED": power_state.NOSTATE,
     "DEPLOYED": power_state.NOSTATE,
     "SUSPENDED": power_state.SUSPENDED,
     "POWERED_ON": power_state.RUNNING,
@@ -28,7 +28,7 @@ status_dict_vapp_to_instance = {
     "REJECTED": power_state.NOSTATE,
     "TRANSFER_TIMEOUT": power_state.NOSTATE,
     "VAPP_UNDEPLOYED": power_state.NOSTATE,
-    "VAPP_PARTIALLY_DEPLOYED": power_state.NOSTATE,
+    "VAPP_PARTIALLY_DEPLOYED": power_state.NOSTATE
 }
 
 
@@ -51,6 +51,8 @@ class HCVCS(object):
         self._login()
 
     def _login(self):
+        logger.info("try to login vcloud.")
+
         url = self.base_url + '/api/sessions'
         encode = "Basic " + base64.standard_b64encode(
             self.username + "@" + self.org + ":" + self.password)
@@ -66,15 +68,18 @@ class HCVCS(object):
             return False
 
         if response.status_code == requests.codes.ok:
+            logger.info("login vcloud success.")
             self.token = response.headers["x-vcloud-authorization"]
             session = sessionType.parseString(response.content, True)
             self.query_url = filter(lambda link: link.type_ == 'application/vnd.vmware.vcloud.query.queryList+xml', session.Link)[0].href
             return True
+
         elif response.status_code == requests.codes.unauthorized:
             logger.error("vcloud authorize failed, "
                          "host: %s, username: %s, org: %s"
                          % (self.base_url, self.username, self.org))
             return False
+
         else:
             logger.error("vcloud authorize failed, "
                          "host: %s, username: %s, org: %s, response_code: %s"
@@ -107,16 +112,19 @@ class HCVCS(object):
         response = rest_execute(method="get", url=url,
                                 headers=headers, verify=verify)
 
-        if not response:
-            return this_page
+        if not response or response.status_code != requests.codes.ok:
+            logger.error("synchronize status step by step failed, response = %s" % response)
+            if not self._login():
+                logger.error("synchronize status step by step failed.")
+                return this_page
 
-        if response.status_code == requests.codes.unauthorized \
-                or response.status_code == requests.codes.forbidden:
-            self._login()
             response = rest_execute(method="get", url=url,
                                     headers=headers, verify=verify)
 
-        if response.status_code == requests.codes.ok:
+        if not response or response.status_code != requests.codes.ok:
+            logger.error("synchronize status step by step failed, response = %s" % response)
+            return this_page
+        else:
             content = queryRecordViewType.parseString(response.content, True)
             for vapp in content.get_Record():
                 this_page[vapp.get_name()] = unify_power_state(vapp.get_status())
@@ -130,10 +138,7 @@ class HCVCS(object):
             next_page = self._synchronize_status_step_by_step(url=next_page_url,
                                                               headers=headers,
                                                               verify=verify)
-
             return dict(this_page, **next_page)
-
-        return this_page
 
 
 def rest_execute(method, url, headers, verify):

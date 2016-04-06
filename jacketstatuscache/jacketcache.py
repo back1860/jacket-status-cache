@@ -24,6 +24,7 @@ def singleton(cls, *args, **kw):
     return _singleton
 
 
+@singleton()
 class JacketStatusCache(object):
 
     def __init__(self, synchronizer):
@@ -33,7 +34,6 @@ class JacketStatusCache(object):
         self.last_sync_time = time.time()
 
     def query_status(self, instance_id):
-        logger.debug("query status, instance_id = %s." % instance_id)
         _cache_lock.acquire()
         now = time.time()
         try:
@@ -49,7 +49,6 @@ class JacketStatusCache(object):
 
         if instance_id in self.status_map:
             status = self.status_map.get(instance_id)
-            logger.debug("query status success, instance_id = %s, status = %s" % (instance_id, status))
             return status
 
         logger.debug("query status, can not find instance record, instance_id = %s." % instance_id)
